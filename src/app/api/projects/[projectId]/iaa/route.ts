@@ -33,17 +33,17 @@ export async function GET(
       ID: data.id || data.task_id || data.external_id || "",
       Risk: data.risk_category || data.risk || data.domain || data.category || "",
       Language: data.language || data.lang || data.locale || "",
-      Prompt: data.prompt || data.question || data.text || "",
-      Answer: data.answer || data.ai_answer || data.response || data.output || "",
+      Prompt: (data.prompt || data.question || data.text || "").slice(0, 200),
+      Answer: (data.answer || data.ai_answer || data.response || data.output || "").slice(0, 200),
     };
 
-    task.annotations.forEach((ann, idx) => {
+    task.annotations.forEach((ann) => {
       const r: any = ann.result || {};
+      const name = ann.user?.name || ann.user?.email || "Unknown";
 
-      row[`Annotator ${idx + 1}`] = ann.user?.email || "Unknown";
-      row[`Rating ${idx + 1}`] = r.rating || "";
-      row[`Severity ${idx + 1}`] = r.severity || "";
-      row[`Notes ${idx + 1}`] = ann.notes || "";
+      row[`${name} - Rating`] = r.rating || r.evaluation || "";
+      row[`${name} - Severity`] = r.severity || "";
+      row[`${name} - Notes`] = ann.notes || "";
     });
 
     return row;
@@ -52,18 +52,21 @@ export async function GET(
   let agreeCount = 0;
   let totalCompared = 0;
 
-  project.tasks.forEach((task) => {
+  // Add agreement column to tasks sheet
+  project.tasks.forEach((task, i) => {
     const ratings = task.annotations
-      .map((a: any) => a.result?.rating)
+      .map((a: any) => a.result?.rating || a.result?.evaluation)
       .filter(Boolean);
 
     if (ratings.length >= 2) {
       totalCompared += 1;
       const first = ratings[0];
-
-      if (ratings.every((r) => r === first)) {
-        agreeCount += 1;
-      }
+      const agreed = ratings.every((r) => r === first);
+      if (agreed) agreeCount += 1;
+      tasksSheet[i]["Agreement"] = agreed ? "✓ Agree" : "✗ Disagree";
+      tasksSheet[i]["Unique Ratings"] = [...new Set(ratings)].join(" / ");
+    } else {
+      tasksSheet[i]["Agreement"] = ratings.length === 0 ? "Pending" : "Only 1";
     }
   });
 

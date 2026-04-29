@@ -120,7 +120,7 @@ export function QAReviewRenderer({ data, config, result, onChange }: Props) {
       )}
 
       <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 space-y-5">
-        <div className="sticky top-0 z-10 flex flex-wrap gap-x-8 gap-y-2 text-xs text-[var(--text-secondary)] border-b border-[var(--border)] bg-[var(--bg-secondary)] pb-3">
+        <div className="flex flex-wrap gap-x-8 gap-y-2 text-xs text-[var(--text-secondary)] border-b border-[var(--border)] pb-3">
           <span><span className="text-[var(--text-muted)]">ID:</span> {taskId}</span>
           <span><span className="text-[var(--text-muted)]">Risk:</span> {risk}</span>
           <span><span className="text-[var(--text-muted)]">Language:</span> {language}</span>
@@ -130,26 +130,42 @@ export function QAReviewRenderer({ data, config, result, onChange }: Props) {
         </div>
 
         {(() => {
-          // System fields to skip (shown in header or not relevant)
-          const SKIP_FIELDS = new Set(["id","task_id","external_id","risk","risk_category","domain","category","language","lang","locale","annotators","context"]);
+          // Fields shown in header OR already extracted above — skip them in body
+          const HEADER_FIELDS = new Set([
+            // shown in header
+            "id","task_id","external_id","risk","risk_category","domain","category",
+            "language","lang","locale","annotators","context",
+            // extracted as prompt
+            "prompt","question","input","text",
+            // extracted as answer  
+            "answer","ai_answer","response","output",
+          ]);
 
-          // If config defines display_fields, use those; otherwise show all data fields
-          const configFields: string[] | undefined = (config as any).display_fields;
+          const configFields: string[] | undefined = (config as any).display_fields?.length > 0
+            ? (config as any).display_fields
+            : undefined;
 
-          const dataEntries = Object.entries(taskData).filter(([key]) => !SKIP_FIELDS.has(key) && key !== "annotators");
+          // Helper to render a field value
+          const renderValue = (value: any): string => {
+            if (Array.isArray(value)) {
+              // If array of objects (like reference_texts), show as JSON, else join
+              if (value.length > 0 && typeof value[0] === "object") {
+                return JSON.stringify(value, null, 2);
+              }
+              return value.join(", ");
+            }
+            if (typeof value === "object" && value !== null) return JSON.stringify(value, null, 2);
+            return String(value ?? "");
+          };
 
-          const fieldsToShow: [string, any][] = configFields && configFields.length > 0
-            ? (configFields.map(f => [f, taskData[f]] as [string, any]).filter(([, v]) => v !== undefined && v !== null && v !== ""))
-            : dataEntries;
+          let fieldsToShow: [string, any][];
 
-          if (fieldsToShow.length === 0) {
-            // fallback to prompt/answer
-            return (
-              <>
-                {prompt && <div><div className="label-title">Prompt</div><div className="task-text">{prompt}</div></div>}
-                {answer && <div><div className="label-title">Answer</div><div className="task-text">{answer}</div></div>}
-              </>
-            );
+          if (configFields) {
+            fieldsToShow = configFields
+              .map(f => [f, taskData[f]] as [string, any])
+              .filter(([, v]) => v !== undefined && v !== null && v !== "");
+          } else {
+            fieldsToShow = Object.entries(taskData).filter(([key]) => !HEADER_FIELDS.has(key));
           }
 
           return (
@@ -159,9 +175,7 @@ export function QAReviewRenderer({ data, config, result, onChange }: Props) {
                   <div className="label-title" style={{ textTransform: "capitalize" }}>
                     {key.replace(/_/g, " ")}
                   </div>
-                  <div className="task-text">
-                    {typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "")}
-                  </div>
+                  <div className="task-text">{renderValue(value)}</div>
                 </div>
               ))}
             </>

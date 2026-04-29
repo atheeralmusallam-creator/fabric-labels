@@ -193,8 +193,22 @@ export function ProjectAnnotator({
     }
   }, [filteredTasks, currentUserId]);
 
+  // Use refs to hold latest values — avoids recreating saveDraft on every keystroke
+  const pendingResultRef = useRef(pendingResult);
+  const notesRef = useRef(notes);
+  const currentTaskRef = useRef(currentTask);
+  const currentAnnotationRef = useRef(currentAnnotation);
+  useEffect(() => { pendingResultRef.current = pendingResult; }, [pendingResult]);
+  useEffect(() => { notesRef.current = notes; }, [notes]);
+  useEffect(() => { currentTaskRef.current = currentTask; }, [currentTask]);
+  useEffect(() => { currentAnnotationRef.current = currentAnnotation; }, [currentAnnotation]);
+
   const saveDraft = useCallback(async () => {
-    if (!pendingResult || !currentTask || currentAnnotation?.status === "SUBMITTED") return;
+    const pr = pendingResultRef.current;
+    const ct = currentTaskRef.current;
+    const ca = currentAnnotationRef.current;
+    const n  = notesRef.current;
+    if (!pr || !ct || ca?.status === "SUBMITTED") return;
 
     setDraftState("saving");
 
@@ -203,9 +217,9 @@ export function ProjectAnnotator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          taskId: currentTask.id,
-          result: pendingResult,
-          notes,
+          taskId: ct.id,
+          result: pr,
+          notes: n,
           status: "DRAFT",
         }),
       });
@@ -216,7 +230,7 @@ export function ProjectAnnotator({
 
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === currentTask.id
+          t.id === ct.id
             ? {
                 ...t,
                 annotations: [
@@ -232,7 +246,7 @@ export function ProjectAnnotator({
     } catch {
       setDraftState("error");
     }
-  }, [pendingResult, currentTask, currentAnnotation?.status, notes]);
+  }, []); // stable — reads from refs
 
   useEffect(() => {
     if (!currentTask || !pendingResult || currentAnnotation?.status === "SUBMITTED") return;
@@ -244,10 +258,10 @@ export function ProjectAnnotator({
 
     const timer = window.setTimeout(() => {
       saveDraft();
-    }, 700);
+    }, 1500); // increased debounce to reduce flicker
 
     return () => window.clearTimeout(timer);
-  }, [pendingResult, notes, currentTask?.id, currentAnnotation?.status, saveDraft]);
+  }, [pendingResult, notes, currentTask?.id, currentAnnotation?.status]);
 
   const handleSubmit = useCallback(async () => {
     if (!currentTask) return;
@@ -387,6 +401,14 @@ export function ProjectAnnotator({
           >
             Label
           </button>
+
+          <Link
+            href={`/projects/${project.id}/iaa-report`}
+            className="text-xs px-4 py-2 rounded-lg border transition-all"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "var(--bg-surface)" }}
+          >
+            IAA Report
+          </Link>
 
           <a
             href={`/api/projects/${project.id}/iaa`}
