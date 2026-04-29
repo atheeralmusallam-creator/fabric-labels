@@ -33,6 +33,7 @@ export function EditProjectButton({
   const [customTypeName, setCustomTypeName] = useState("");
   const [customLabels, setCustomLabels] = useState<RatingLabel[]>([]);
   const [customInstructions, setCustomInstructions] = useState("");
+  const [displayFieldsInput, setDisplayFieldsInput] = useState("");
 
   const filteredAnnotators = annotators.filter(u => {
     const q = annotatorSearch.trim().toLowerCase();
@@ -59,6 +60,7 @@ export function EditProjectButton({
         setCustomTypeName(cfg.custom_type_name || "");
         setCustomLabels(cfg.rating_labels || []);
         setCustomInstructions(cfg.instructions || "");
+        setDisplayFieldsInput((cfg.display_fields || []).join(", "));
       } catch { alert("Failed to load project"); }
       finally { setLoadingAnnotators(false); }
     };
@@ -77,6 +79,9 @@ export function EditProjectButton({
       ...(customLabels.length > 0 ? { rating_labels: customLabels.filter(l => l.value.trim()) } : {}),
       ...(customTypeName ? { custom_type_name: customTypeName } : {}),
       ...(customInstructions ? { instructions: customInstructions } : {}),
+      ...(displayFieldsInput.trim()
+        ? { display_fields: displayFieldsInput.split(",").map((s: string) => s.trim()).filter(Boolean) }
+        : { display_fields: [] }),
     };
 
     const res = await fetch(`/api/projects/${projectId}`, {
@@ -215,6 +220,22 @@ export function EditProjectButton({
               <textarea value={customInstructions} onChange={e => setCustomInstructions(e.target.value)}
                 rows={3} placeholder="Describe how to evaluate each item..."
                 className={inputCls + " resize-none"} style={inputStyle} />
+            </div>
+
+            <div>
+              <label className="block text-xs mb-1" style={{ color: "var(--text-muted)" }}>
+                Display Fields
+                <span className="ml-1 font-normal" style={{ color: "var(--text-muted)" }}>(comma-separated column names to show)</span>
+              </label>
+              <input
+                value={displayFieldsInput}
+                onChange={e => setDisplayFieldsInput(e.target.value)}
+                placeholder="e.g. question, answer, reference_text_citations"
+                className={inputCls} style={inputStyle}
+              />
+              <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>
+                Leave empty to show all columns automatically
+              </p>
             </div>
           </div>
         )}

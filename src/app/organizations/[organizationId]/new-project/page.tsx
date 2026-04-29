@@ -75,6 +75,7 @@ export default function NewProjectPage({ params }: { params: { organizationId: s
     { value: "Option B", hotkey: "2" },
   ]);
   const [customInstructions, setCustomInstructions] = useState("");
+  const [displayFieldsInput, setDisplayFieldsInput] = useState("");
 
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState("");
@@ -393,6 +394,22 @@ export default function NewProjectPage({ params }: { params: { organizationId: s
                       className="w-full px-3 py-2 rounded-lg border text-sm outline-none resize-none"
                       style={{ background: "var(--bg-primary)", borderColor: "var(--border)", color: "var(--text-primary)" }}
                     />
+                  </div>
+
+                  {/* Display fields */}
+                  <div>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--text-secondary)" }}>
+                      Display Fields
+                      <span className="ml-1 font-normal" style={{ color: "var(--text-muted)" }}>(comma-separated column names)</span>
+                    </label>
+                    <input
+                      value={displayFieldsInput}
+                      onChange={e => setDisplayFieldsInput(e.target.value)}
+                      placeholder="e.g. question, answer, reference_text_citations"
+                      className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                      style={{ background: "var(--bg-primary)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+                    />
+                    <p className="text-[11px] mt-1" style={{ color: "var(--text-muted)" }}>Leave empty to show all columns automatically</p>
                   </div>
                 </div>
               )}

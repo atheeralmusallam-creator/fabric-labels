@@ -129,21 +129,44 @@ export function QAReviewRenderer({ data, config, result, onChange }: Props) {
           )}
         </div>
 
-        {taskData.context && (
-          <div className="text-xs text-gray-600">
-            Context: <span className="text-[var(--text-muted)]">{taskData.context}</span>
-          </div>
-        )}
+        {(() => {
+          // System fields to skip (shown in header or not relevant)
+          const SKIP_FIELDS = new Set(["id","task_id","external_id","risk","risk_category","domain","category","language","lang","locale","annotators","context"]);
 
-        <div>
-          <div className="label-title">Prompt</div>
-          <div className="task-text">{prompt}</div>
-        </div>
+          // If config defines display_fields, use those; otherwise show all data fields
+          const configFields: string[] | undefined = (config as any).display_fields;
 
-        <div>
-          <div className="label-title">Answer</div>
-          <div className="task-text">{answer}</div>
-        </div>
+          const dataEntries = Object.entries(taskData).filter(([key]) => !SKIP_FIELDS.has(key) && key !== "annotators");
+
+          const fieldsToShow: [string, any][] = configFields && configFields.length > 0
+            ? configFields.map(f => [f, taskData[f]]).filter(([, v]) => v !== undefined && v !== null && v !== "")
+            : dataEntries;
+
+          if (fieldsToShow.length === 0) {
+            // fallback to prompt/answer
+            return (
+              <>
+                {prompt && <div><div className="label-title">Prompt</div><div className="task-text">{prompt}</div></div>}
+                {answer && <div><div className="label-title">Answer</div><div className="task-text">{answer}</div></div>}
+              </>
+            );
+          }
+
+          return (
+            <>
+              {fieldsToShow.map(([key, value]) => (
+                <div key={key}>
+                  <div className="label-title" style={{ textTransform: "capitalize" }}>
+                    {key.replace(/_/g, " ")}
+                  </div>
+                  <div className="task-text">
+                    {typeof value === "object" ? JSON.stringify(value, null, 2) : String(value ?? "")}
+                  </div>
+                </div>
+              ))}
+            </>
+          );
+        })()}
       </div>
 
       <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 space-y-5">
