@@ -148,7 +148,7 @@ export function QAReviewRenderer({ data, config, result, onChange }: Props) {
 
       <div className="bg-[var(--bg-secondary)] border border-[var(--border)] rounded-xl p-5 space-y-5">
         <div>
-          <div className="evaluation-title">{config.custom_type_name || "Evaluation"}</div>
+          <div className="evaluation-title">{(config as any).custom_type_name || "Evaluation"}</div>
 
           <div className="flex flex-wrap gap-2">
             {labels.map((label: any, index: number) => {
