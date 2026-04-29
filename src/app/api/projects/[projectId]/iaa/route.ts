@@ -64,7 +64,7 @@ export async function GET(
       const agreed = ratings.every((r) => r === first);
       if (agreed) agreeCount += 1;
       tasksSheet[i]["Agreement"] = agreed ? "✓ Agree" : "✗ Disagree";
-      tasksSheet[i]["Unique Ratings"] = [...new Set(ratings)].join(" / ");
+      tasksSheet[i]["Unique Ratings"] = Array.from(new Set(ratings)).join(" / ");
     } else {
       tasksSheet[i]["Agreement"] = ratings.length === 0 ? "Pending" : "Only 1";
     }
