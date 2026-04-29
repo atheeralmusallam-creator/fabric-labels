@@ -193,22 +193,8 @@ export function ProjectAnnotator({
     }
   }, [filteredTasks, currentUserId]);
 
-  // Use refs to hold latest values — avoids recreating saveDraft on every keystroke
-  const pendingResultRef = useRef(pendingResult);
-  const notesRef = useRef(notes);
-  const currentTaskRef = useRef(currentTask);
-  const currentAnnotationRef = useRef(currentAnnotation);
-  useEffect(() => { pendingResultRef.current = pendingResult; }, [pendingResult]);
-  useEffect(() => { notesRef.current = notes; }, [notes]);
-  useEffect(() => { currentTaskRef.current = currentTask; }, [currentTask]);
-  useEffect(() => { currentAnnotationRef.current = currentAnnotation; }, [currentAnnotation]);
-
   const saveDraft = useCallback(async () => {
-    const pr = pendingResultRef.current;
-    const ct = currentTaskRef.current;
-    const ca = currentAnnotationRef.current;
-    const n  = notesRef.current;
-    if (!pr || !ct || ca?.status === "SUBMITTED") return;
+    if (!pendingResult || !currentTask || currentAnnotation?.status === "SUBMITTED") return;
 
     setDraftState("saving");
 
@@ -217,9 +203,9 @@ export function ProjectAnnotator({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          taskId: ct.id,
-          result: pr,
-          notes: n,
+          taskId: currentTask.id,
+          result: pendingResult,
+          notes,
           status: "DRAFT",
         }),
       });
@@ -230,7 +216,7 @@ export function ProjectAnnotator({
 
       setTasks((prev) =>
         prev.map((t) =>
-          t.id === ct.id
+          t.id === currentTask.id
             ? {
                 ...t,
                 annotations: [
@@ -246,7 +232,7 @@ export function ProjectAnnotator({
     } catch {
       setDraftState("error");
     }
-  }, []); // stable — reads from refs
+  }, [pendingResult, currentTask, currentAnnotation?.status, notes]);
 
   useEffect(() => {
     if (!currentTask || !pendingResult || currentAnnotation?.status === "SUBMITTED") return;
@@ -258,10 +244,10 @@ export function ProjectAnnotator({
 
     const timer = window.setTimeout(() => {
       saveDraft();
-    }, 1500); // increased debounce to reduce flicker
+    }, 700);
 
     return () => window.clearTimeout(timer);
-  }, [pendingResult, notes, currentTask?.id, currentAnnotation?.status]);
+  }, [pendingResult, notes, currentTask?.id, currentAnnotation?.status, saveDraft]);
 
   const handleSubmit = useCallback(async () => {
     if (!currentTask) return;
