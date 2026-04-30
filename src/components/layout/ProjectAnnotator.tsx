@@ -410,14 +410,6 @@ export function ProjectAnnotator({
             IAA Report
           </Link>
 
-          <a
-            href={`/api/projects/${project.id}/iaa`}
-            download
-            className="text-xs bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 shadow-md shadow-emerald-500/20 text-[var(--text-primary)] px-4 py-2 rounded-lg"
-          >
-            Export IAA
-          </a>
-
           {isManagerOrAdmin && (
             <>
               <EditProjectButton

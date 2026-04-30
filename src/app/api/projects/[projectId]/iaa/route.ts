@@ -58,6 +58,10 @@ function cohenKappa(y1: string[], y2: string[], labels: string[]) {
 
 export async function GET(req: Request, { params }: { params: { projectId: string } }) {
 
+  // filterUserId present → annotator export (only their own rows)
+  const url = new URL(req.url);
+  const filterUserId = url.searchParams.get("userId") || null;
+
   const project = await prisma.project.findUnique({
     where: { id: params.projectId },
     include: {
@@ -66,7 +70,7 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
         include: {
           annotations: {
             where: { status:"SUBMITTED" },
-            include: { user: { select:{ name:true, email:true } } },
+            include: { user: { select:{ id:true, name:true, email:true } } },
           },
         },
       },
@@ -78,10 +82,11 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
   const rating = (a: any): string => String((a.result as any)?.rating || (a.result as any)?.evaluation || "");
   const annName = (a: any) => a.user?.name || a.user?.email || "Unknown";
 
-  // ── Flatten to long format (like Tasks sheet) ──────────────────────────
+  // ── Flatten to long format ──────────────────────────────────────────────
   type Row = { task_id:string; domain:string; answer:string; prompt:string;
                annotator:string; comments:string; evaluation:string };
-  const longRows: Row[] = [];
+  const longRows: Row[]    = [];  // Tasks sheet — filtered by userId if annotator
+  const allLongRows: Row[] = [];  // Stats/Agreement — always all annotations
 
   project.tasks.forEach(task => {
     const d = data(task);
@@ -90,17 +95,20 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
     const ans   = String(d.answer||d.ai_answer||d.response||d.output||"").slice(0,400);
     const pmt   = String(d.prompt||d.question||d.text||"").slice(0,400);
     task.annotations.forEach(ann => {
-      longRows.push({ task_id:tid, domain, answer:ans, prompt:pmt,
-                      annotator: annName(ann),
-                      comments:  ann.notes||"",
-                      evaluation: rating(ann) });
+      const row = { task_id:tid, domain, answer:ans, prompt:pmt,
+                    annotator: annName(ann),
+                    comments:  ann.notes||"",
+                    evaluation: rating(ann) };
+      allLongRows.push(row);
+      // Tasks sheet: only current user's rows if annotator export
+      if (!filterUserId || ann.userId === filterUserId) longRows.push(row);
     });
   });
 
   // ── Per-task agreement ─────────────────────────────────────────────────
   const taskMap = new Map<string,string[]>();
   const taskMeta = new Map<string,{domain:string;answer:string;prompt:string}>();
-  longRows.forEach(r => {
+  allLongRows.forEach(r => {
     if (!taskMap.has(r.task_id)) taskMap.set(r.task_id,[]);
     taskMap.get(r.task_id)!.push(r.evaluation);
     if (!taskMeta.has(r.task_id)) taskMeta.set(r.task_id,{domain:r.domain,answer:r.answer,prompt:r.prompt});
@@ -123,12 +131,12 @@ export async function GET(req: Request, { params }: { params: { projectId: strin
   const statsRows = Object.entries(statsCounts).sort().map(([k,v])=>({label:k,count:v,pct:v/total}));
 
   // ── Kappa pairs ────────────────────────────────────────────────────────
-  const annotators = Array.from(new Set(longRows.map(r=>r.annotator))).sort();
+  const annotators = Array.from(new Set(allLongRows.map(r=>r.annotator))).sort();
   const kappaRows: {a1:string;a2:string;shared:number;kappa:number}[] = [];
   for (let i=0;i<annotators.length;i++) for (let j=i+1;j<annotators.length;j++) {
     const a1=annotators[i], a2=annotators[j];
-    const d1 = new Map(longRows.filter(r=>r.annotator===a1).map(r=>[r.task_id,r.evaluation]));
-    const d2 = new Map(longRows.filter(r=>r.annotator===a2).map(r=>[r.task_id,r.evaluation]));
+    const d1 = new Map(allLongRows.filter(r=>r.annotator===a1).map(r=>[r.task_id,r.evaluation]));
+    const d2 = new Map(allLongRows.filter(r=>r.annotator===a2).map(r=>[r.task_id,r.evaluation]));
     const shared = Array.from(d1.keys()).filter(k=>d2.has(k));
     if (shared.length<2) continue;
     const y1=shared.map(k=>d1.get(k)!), y2=shared.map(k=>d2.get(k)!);

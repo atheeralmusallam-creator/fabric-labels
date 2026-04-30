@@ -4,16 +4,23 @@ import { useState } from "react";
 import Link from "next/link";
 
 type AnnotatorStat = { name: string; count: number; ratings: Record<string, number> };
+type AnnotationView = {
+  userId?: string | null; userName: string;
+  rating: string; severity: string; notes: string; isCurrentUser: boolean;
+};
 type TaskRow = {
   id: string; order: number; prompt: string; risk: string;
   agreed: boolean; hasDisagreement: boolean;
-  annotations: { userId?: string | null; userName: string; rating: string; severity: string; notes: string }[];
+  annotations: AnnotationView[];
   ratings: string[];
 };
 
 type IAAData = {
   project: { id: string; name: string };
-  stats: { totalTasks: number; annotatedTasks: number; agreedCount: number; disagreedCount: number; agreementPct: number; pendingTasks: number };
+  isManager: boolean;
+  currentUserId: string;
+  stats: { totalTasks: number; annotatedTasks: number; agreedCount: number;
+           disagreedCount: number; agreementPct: number; pendingTasks: number };
   ratingDist: Record<string, number>;
   annotators: AnnotatorStat[];
   riskDisagreement: Record<string, { total: number; disagreed: number }>;
@@ -35,11 +42,8 @@ function DonutChart({ value, total, color }: { value: number; total: number; col
     <svg viewBox="0 0 100 100" className="w-24 h-24">
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth="12" />
       <circle cx={cx} cy={cy} r={r} fill="none" stroke={color} strokeWidth="12"
-        strokeDasharray={`${dash} ${circumference - dash}`}
-        strokeLinecap="round"
-        transform="rotate(-90 50 50)"
-        style={{ transition: "stroke-dasharray 0.6s ease" }}
-      />
+        strokeDasharray={`${dash} ${circumference - dash}`} strokeLinecap="round"
+        transform="rotate(-90 50 50)" style={{ transition: "stroke-dasharray 0.6s ease" }} />
       <text x="50" y="46" textAnchor="middle" fontSize="16" fontWeight="700" fill="var(--text-primary)">{Math.round(pct * 100)}%</text>
       <text x="50" y="60" textAnchor="middle" fontSize="8" fill="var(--text-muted)">{value}/{total}</text>
     </svg>
@@ -96,23 +100,28 @@ function AnnotatorCard({ annotator }: { annotator: AnnotatorStat }) {
 }
 
 export function IAAReportClient({ data }: { data: IAAData }) {
-  const [tab, setTab] = useState<"overview" | "tasks" | "annotators">("overview");
+  const [tab, setTab]       = useState<"overview" | "tasks" | "annotators">("overview");
   const [filter, setFilter] = useState<"all" | "agreed" | "disagreed" | "pending">("all");
   const [search, setSearch] = useState("");
+  const { stats, isManager } = data;
 
   const filteredTasks = data.tasks.filter((t) => {
-    if (filter === "agreed" && !t.agreed) return false;
-    if (filter === "disagreed" && !t.hasDisagreement) return false;
-    if (filter === "pending" && t.ratings.length > 0) return false;
-    if (search && !t.prompt.toLowerCase().includes(search.toLowerCase()) && !t.risk.toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
+    const matchSearch = !search || t.prompt.toLowerCase().includes(search.toLowerCase()) || t.risk.toLowerCase().includes(search.toLowerCase());
+    const matchFilter =
+      filter === "all" ? true :
+      filter === "agreed" ? t.agreed :
+      filter === "disagreed" ? t.hasDisagreement :
+      filter === "pending" ? t.ratings.length === 0 : true;
+    return matchSearch && matchFilter;
   });
 
-  const { stats } = data;
+  // Export URL — for annotators, add userId to restrict the export
+  const exportUrl = isManager
+    ? `/api/projects/${data.project.id}/iaa`
+    : `/api/projects/${data.project.id}/iaa?userId=${data.currentUserId}`;
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--bg-primary)" }}>
-      {/* Header */}
+    <div style={{ background: "var(--bg-primary)", minHeight: "100vh" }}>
       <header className="border-b px-6 py-4 sticky top-0 z-20"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -123,8 +132,14 @@ export function IAAReportClient({ data }: { data: IAAData }) {
             </Link>
             <span style={{ color: "var(--border)" }}>/</span>
             <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>IAA Report</span>
+            {!isManager && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                style={{ background: "rgba(99,102,241,0.15)", color: "#6366f1" }}>
+                My View
+              </span>
+            )}
           </div>
-          <a href={`/api/projects/${data.project.id}/iaa`}
+          <a href={exportUrl}
             className="text-xs px-4 py-2 rounded-lg font-medium text-white transition-all"
             style={{ background: "linear-gradient(135deg,#6366f1,#4f46e5)", boxShadow: "0 2px 8px rgba(99,102,241,0.3)" }}>
             ↓ Export Excel
@@ -133,13 +148,31 @@ export function IAAReportClient({ data }: { data: IAAData }) {
       </header>
 
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-6">
+
+        {/* Annotator notice banner */}
+        {!isManager && (
+          <div className="rounded-xl border px-5 py-3 flex items-center gap-3"
+            style={{ background: "rgba(99,102,241,0.06)", borderColor: "rgba(99,102,241,0.25)" }}>
+            <span className="text-base">🔒</span>
+            <div>
+              <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
+                Limited view — your annotations only
+              </p>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Overall stats are visible to everyone. Individual ratings from other annotators are hidden.
+                Your exported file will only include your own annotation data.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: "Total Tasks", value: stats.totalTasks, sub: "in project", color: "#6366f1" },
-            { label: "Agreement", value: `${stats.agreementPct.toFixed(1)}%`, sub: `${stats.agreedCount} agreed`, color: "#22c55e" },
-            { label: "Disagreements", value: stats.disagreedCount, sub: "need review", color: "#ef4444" },
-            { label: "Pending", value: stats.pendingTasks, sub: "not annotated", color: "#f59e0b" },
+            { label: "Total Tasks",    value: stats.totalTasks,               sub: "in project",      color: "#6366f1" },
+            { label: "Agreement",      value: `${stats.agreementPct.toFixed(1)}%`, sub: `${stats.agreedCount} agreed`, color: "#22c55e" },
+            { label: "Disagreements",  value: stats.disagreedCount,            sub: "need review",     color: "#ef4444" },
+            { label: "Pending",        value: stats.pendingTasks,              sub: "not annotated",   color: "#f59e0b" },
           ].map((kpi) => (
             <div key={kpi.label} className="rounded-xl border p-4"
               style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
@@ -168,16 +201,15 @@ export function IAAReportClient({ data }: { data: IAAData }) {
         {/* Overview Tab */}
         {tab === "overview" && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Agreement donut */}
             <div className="rounded-xl border p-6" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
               <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--text-primary)" }}>Agreement Overview</h3>
               <div className="flex items-center gap-6">
                 <DonutChart value={stats.agreedCount} total={stats.annotatedTasks} color="#22c55e" />
                 <div className="space-y-2 flex-1">
                   {[
-                    { label: "Agreed", value: stats.agreedCount, color: "#22c55e" },
-                    { label: "Disagreed", value: stats.disagreedCount, color: "#ef4444" },
-                    { label: "Pending", value: stats.pendingTasks, color: "#f59e0b" },
+                    { label: "Agreed",     value: stats.agreedCount,    color: "#22c55e" },
+                    { label: "Disagreed",  value: stats.disagreedCount, color: "#ef4444" },
+                    { label: "Pending",    value: stats.pendingTasks,   color: "#f59e0b" },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded-sm" style={{ background: item.color }} />
@@ -189,7 +221,6 @@ export function IAAReportClient({ data }: { data: IAAData }) {
               </div>
             </div>
 
-            {/* Rating distribution */}
             <div className="rounded-xl border p-6" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
               <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--text-primary)" }}>Rating Distribution</h3>
               {Object.keys(data.ratingDist).length > 0
@@ -197,7 +228,6 @@ export function IAAReportClient({ data }: { data: IAAData }) {
                 : <p className="text-xs" style={{ color: "var(--text-muted)" }}>No submissions yet</p>}
             </div>
 
-            {/* Risk disagreement */}
             {Object.keys(data.riskDisagreement).length > 0 && (
               <div className="rounded-xl border p-6 md:col-span-2" style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}>
                 <h3 className="text-sm font-semibold mb-4" style={{ color: "var(--text-primary)" }}>Disagreement by Risk Category</h3>
@@ -228,7 +258,6 @@ export function IAAReportClient({ data }: { data: IAAData }) {
         {/* Tasks Tab */}
         {tab === "tasks" && (
           <div className="space-y-4">
-            {/* Filters */}
             <div className="flex flex-wrap items-center gap-3">
               <input value={search} onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search tasks..."
@@ -249,7 +278,6 @@ export function IAAReportClient({ data }: { data: IAAData }) {
               <span className="text-xs" style={{ color: "var(--text-muted)" }}>{filteredTasks.length} tasks</span>
             </div>
 
-            {/* Tasks list */}
             <div className="space-y-2">
               {filteredTasks.map((task) => (
                 <div key={task.id} className="rounded-xl border p-4 transition-all"
@@ -259,10 +287,8 @@ export function IAAReportClient({ data }: { data: IAAData }) {
                   }}>
                   <div className="flex items-start gap-3">
                     <div className="flex-shrink-0 mt-0.5">
-                      {task.hasDisagreement
-                        ? <span className="text-sm">⚠️</span>
-                        : task.agreed
-                        ? <span className="text-sm">✅</span>
+                      {task.hasDisagreement ? <span className="text-sm">⚠️</span>
+                        : task.agreed ? <span className="text-sm">✅</span>
                         : <span className="text-sm">⏳</span>}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -278,15 +304,24 @@ export function IAAReportClient({ data }: { data: IAAData }) {
                       <p className="text-sm truncate mb-2" style={{ color: "var(--text-primary)" }}>{task.prompt}</p>
                       <div className="flex flex-wrap gap-2">
                         {task.annotations.map((ann, i) => (
-                          <div key={i} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg border"
-                            style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}>
-                            <span style={{ color: "var(--text-muted)" }}>{ann.userName}</span>
-                            {ann.rating && (
+                          <div key={i} className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg border ${ann.isCurrentUser ? "ring-1 ring-indigo-400" : ""}`}
+                            style={{ background: "var(--bg-surface)", borderColor: ann.isCurrentUser ? "rgba(99,102,241,0.5)" : "var(--border)" }}>
+                            <span style={{ color: "var(--text-muted)" }}>
+                              {ann.userName}
+                              {ann.isCurrentUser && <span className="ml-1 text-[9px] font-bold" style={{ color: "#6366f1" }}>(you)</span>}
+                            </span>
+                            {ann.rating && ann.rating !== "—" ? (
                               <span className="font-semibold px-1.5 py-0.5 rounded text-white text-[10px]"
                                 style={{ background: getColor(ann.rating) }}>
                                 {ann.rating}
                               </span>
-                            )}
+                            ) : ann.rating === "—" ? (
+                              /* Other annotator — rating hidden */
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                                style={{ background: "var(--bg-primary)", color: "var(--text-muted)" }}>
+                                🔒
+                              </span>
+                            ) : null}
                           </div>
                         ))}
                         {task.ratings.length === 0 && (
@@ -303,10 +338,17 @@ export function IAAReportClient({ data }: { data: IAAData }) {
 
         {/* Annotators Tab */}
         {tab === "annotators" && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {data.annotators.map((ann) => (
-              <AnnotatorCard key={ann.name} annotator={ann} />
-            ))}
+          <div>
+            {!isManager && (
+              <p className="text-xs mb-4 px-1" style={{ color: "var(--text-muted)" }}>
+                Showing aggregate statistics for all annotators. Individual task-level ratings are not visible.
+              </p>
+            )}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {data.annotators.map((ann) => (
+                <AnnotatorCard key={ann.name} annotator={ann} />
+              ))}
+            </div>
           </div>
         )}
       </div>
